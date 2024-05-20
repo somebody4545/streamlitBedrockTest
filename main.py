@@ -3,21 +3,18 @@
 """
 Shows how to generate a message with Anthropic Claude (on demand).
 """
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader
-from langchain.prompts import PromptTemplate
-from langchain_community.embeddings.bedrock import BedrockEmbeddings
-from langchain_community.chat_models import BedrockChat
-from langchain_community.vectorstores import Chroma
-from langchain.chains import RetrievalQA
-import boto3
-import json
 import logging
+
+import boto3
 import streamlit as st
 from PyPDF2 import PdfReader
-import botocore.exceptions
+from langchain.chains import RetrievalQA
 from langchain.docstore.document import Document
-
+from langchain.prompts import PromptTemplate
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.chat_models import BedrockChat
+from langchain_community.embeddings.bedrock import BedrockEmbeddings
+from langchain_community.vectorstores import Chroma
 
 bedrock = boto3.client(service_name='bedrock-runtime')
 # loaders = [PyPDFLoader("ciencia_comida_aviones.pdf"),]
