@@ -1,10 +1,19 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""
-Shows how to generate a message with Anthropic Claude (on demand).
-"""
-import logging
 
+MODEL_ID = 'anthropic.claude-3-sonnet-20240229-v1:0'
+QUERY_PROMPT_TEMPLATE = """\
+    H:
+    Answer the question based on the provided context. Also respond to unrelated queries, but make sure to note you are doing so. Also please look at chat history, and use the given information to have a conversation, don't just rely on the provided documents.
+    Context:
+    {context}
+    Question: 
+    {question}
+    A:
+    """
+
+import logging
+ 
 import boto3
 import streamlit as st
 from PyPDF2 import PdfReader
@@ -15,6 +24,16 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.chat_models import BedrockChat
 from langchain_community.embeddings.bedrock import BedrockEmbeddings
 from langchain_community.vectorstores import Chroma
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationalRetrievalChain
+import shutil
+
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "memory" not in st.session_state:
+    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", output_key='answer', return_messages=True)
+
 
 bedrock = boto3.client(service_name='bedrock-runtime')
 # loaders = [PyPDFLoader("ciencia_comida_aviones.pdf"),]
@@ -23,9 +42,14 @@ bedrock = boto3.client(service_name='bedrock-runtime')
 #
 # for loader in loaders:
 #     docs.extend(loader.load())
-st.text("Welcome to the RAG demo with Anthropic Claude. Please upload some PDFs to get started.")
+st.text("Welcome to the Payments AI Demo.")
+st.text(f"The current model is: {MODEL_ID}")
 files = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True)
 if len(files) > 0:
+    try:
+        shutil.rmtree("vector_store/chroma")
+    except:
+        pass
     docs = []
     for doc in files:
         reader = PdfReader(doc)
@@ -39,35 +63,30 @@ if len(files) > 0:
 
     docs_splitted = r_splitter.split_documents(documents=docs)
     vector_store = Chroma.from_documents(documents=docs_splitted,
-                                         embedding=BedrockEmbeddings(),
-                                         persist_directory='vector_store/chroma/')
+                                         embedding=BedrockEmbeddings())
     st.text("Loaded the following documents:")
     for file in files:
-        st.text(file.name)
+        st.text(f'\t- \"{file.name}"')
 
-    QUERY_PROMPT_TEMPLATE = """\
-    H:
-    Answer the question based on the provided context. Do not create false information.
-    {context}
-    Question: {question}
-    A:
-    """
+    # qa_chain = RetrievalQA.from_chain_type(
+    #     llm=BedrockChat(model_id=MODEL_ID, client=bedrock),
+    #     retriever=vector_store.as_retriever(search_kwargs={'k': 5}),
+    #     memory=st.session_state.memory,
+    #     return_source_documents=True,
+    #     chain_type_kwargs={"prompt": PromptTemplate.from_template(QUERY_PROMPT_TEMPLATE)}
 
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=BedrockChat(model_id='anthropic.claude-3-haiku-20240307-v1:0', client=bedrock),
+    # )
+    qa_chain = ConversationalRetrievalChain.from_llm(
+        llm=BedrockChat(model_id=MODEL_ID, client=bedrock),
+        memory=st.session_state.memory,
         retriever=vector_store.as_retriever(search_kwargs={'k': 5}),
-        return_source_documents=True,
-        chain_type_kwargs={"prompt": PromptTemplate.from_template(QUERY_PROMPT_TEMPLATE)}
+        return_source_documents=True
     )
 
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=logging.INFO)
 
-    st.title("Bot")
-
-    # Initialize chat history
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    st.title("Your AI Companion")
 
     # Display chat messages from history on app rerun
     for message in st.session_state.messages:
@@ -81,12 +100,13 @@ if len(files) > 0:
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
 
-        response = qa_chain(prompt).get('result')
+        response = qa_chain(prompt).get('answer')
         # Display assistant response in chat message container
         with st.chat_message("assistant"):
             st.markdown(response)
         # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": response})
+        # st.info(st.session_state.memory.abuffer_as_str)
 
 else:
     st.text("Please upload some PDFs.")
