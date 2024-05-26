@@ -1,16 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-MODEL_ID = 'anthropic.claude-3-sonnet-20240229-v1:0'
-QUERY_PROMPT_TEMPLATE = """\
-    H:
-    Answer the question based on the provided context. Also respond to unrelated queries, but make sure to note you are doing so. Also please look at chat history, and use the given information to have a conversation, don't just rely on the provided documents.
-    Context:
-    {context}
-    Question: 
-    {question}
-    A:
-    """
+MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0"
 
 import logging
  
@@ -47,7 +38,7 @@ st.text(f"The current model is: {MODEL_ID}")
 files = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True)
 if len(files) > 0:
     try:
-        shutil.rmtree("vector_store/chroma")
+        shutil.rmtree("vector_store")
     except:
         pass
     docs = []
@@ -62,6 +53,7 @@ if len(files) > 0:
                                                 separators=["\n\n", "\n"])
 
     docs_splitted = r_splitter.split_documents(documents=docs)
+    vector_store = None
     vector_store = Chroma.from_documents(documents=docs_splitted,
                                          embedding=BedrockEmbeddings())
     st.text("Loaded the following documents:")
@@ -79,8 +71,9 @@ if len(files) > 0:
     qa_chain = ConversationalRetrievalChain.from_llm(
         llm=BedrockChat(model_id=MODEL_ID, client=bedrock),
         memory=st.session_state.memory,
-        retriever=vector_store.as_retriever(search_kwargs={'k': 5}),
-        return_source_documents=True
+        retriever=vector_store.as_retriever(),
+        return_source_documents=True,
+        condense_question_prompt=PromptTemplate(input_variables=['chat_history', 'question'], template='Your task is to help out the user with understanding a document.\nHistory: {chat_history}\nQuestion: {question}')
     )
 
     logger = logging.getLogger(__name__)
